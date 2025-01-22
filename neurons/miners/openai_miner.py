@@ -61,7 +61,7 @@ class OpenaiMiner:
                 response_format = HTML,
             )
 
-            synapse.html = html_response.html
+            synapse.html = html_response
             return synapse
         except Exception as e:
             bt.logging.error(f"Error in OpenaiMiner forward_image: {e}")
