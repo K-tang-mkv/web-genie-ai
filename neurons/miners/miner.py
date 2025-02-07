@@ -15,8 +15,10 @@
 # THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
-from dotenv import load_dotenv, find_dotenv
-load_dotenv(find_dotenv(filename=".env.miner"))
+from dotenv import load_dotenv
+
+load_dotenv(".env.miner")
+load_dotenv(".env")
 
 import time
 
@@ -70,6 +72,8 @@ class Miner(BaseMinerNeuron):
     async def forward_image(
         self, synapse: WebgenieImageSynapse
     ) -> WebgenieImageSynapse:
+        validator_uid = self.metagraph.hotkeys.index(synapse.dendrite.hotkey)
+        bt.logging.debug(f"Validator {validator_uid}'s repo version: {synapse.VERSION}")
         bt.logging.debug(f"Miner image forward called with image: {image_debug_str(synapse.base64_image)}...")
         
         if synapse.task_id not in self.task_state:
@@ -77,7 +81,7 @@ class Miner(BaseMinerNeuron):
             create_time = time.time()
             synapse = await self.genie_miner.forward_image(synapse)
             
-            nonce = add_answer_hash(synapse, synapse.html)
+            nonce = add_answer_hash(synapse, self.uid, synapse.html)
             self.task_state[synapse.task_id] = {
                 "html": synapse.html,
                 "nonce": nonce,
@@ -206,6 +210,7 @@ class Miner(BaseMinerNeuron):
 
 # This is the main function, which runs the miner.
 if __name__ == "__main__":
+    bt.logging.info(f"start to mine!")
     with Miner() as miner:
         while True:
             time.sleep(5)
