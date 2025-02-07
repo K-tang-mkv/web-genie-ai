@@ -23,9 +23,9 @@ import bittensor as bt
 from abc import ABC, abstractmethod
 
 # Sync calls set weights and also resyncs the metagraph.
+from webgenie.constants import NEURON_EPOCH_LENGTH, SPEC_VERSION
 from webgenie.utils.config import check_config, add_args, config
 from webgenie.utils.misc import ttl_get_block
-from webgenie import __spec_version__ as spec_version
 from webgenie.mock import MockSubtensor, MockMetagraph
 
 
@@ -53,7 +53,7 @@ class BaseNeuron(ABC):
     subtensor: "bt.subtensor"
     wallet: "bt.wallet"
     metagraph: "bt.metagraph"
-    spec_version: int = spec_version
+    spec_version: int = SPEC_VERSION
 
     @property
     def block(self):
@@ -118,9 +118,6 @@ class BaseNeuron(ABC):
         if self.should_sync_metagraph():
             self.resync_metagraph()
 
-        # Always save state.
-        self.save_state()
-
     def check_registered(self):
         # --- Check for registration.
         if not self.subtensor.is_hotkey_registered(
@@ -139,7 +136,7 @@ class BaseNeuron(ABC):
         """
         return (
             self.block - self.metagraph.last_update[self.uid]
-        ) > self.config.neuron.epoch_length
+        ) > NEURON_EPOCH_LENGTH
 
     def should_set_weights(self) -> bool:
         # Check if enough epoch blocks have elapsed since the last epoch.
@@ -149,7 +146,7 @@ class BaseNeuron(ABC):
         # Define appropriate logic for when set weights.
         return (
             (self.block - self.metagraph.last_update[self.uid])
-            > self.config.neuron.epoch_length
+            > NEURON_EPOCH_LENGTH
             and self.neuron_type != "MinerNeuron"
         )  # don't set weights if you're a miner
 

@@ -34,7 +34,7 @@ def add_neuron(coldkey: str, hotkey: str):
     existing_neuron = session.query(Neuron).filter_by(hotkey=hotkey).first()
     
     if existing_neuron:
-        bt.logging.info(f"neuron with hotkey {hotkey} already exists. Skipping creation.")
+        #bt.logging.info(f"neuron with hotkey {hotkey} already exists. Skipping creation.")
         return existing_neuron.id  # Return the existing session id
 
     return create_record(session, Neuron, coldkey=coldkey, hotkey=hotkey)
@@ -57,7 +57,7 @@ def create_leaderboard_session(session_number: int, created_at: datetime, compet
     existing_session = session.query(LeaderboardSession).filter_by(id=session_number).first()
     
     if existing_session:
-        bt.logging.info(f"Session with id {session_number} already exists. Skipping creation.")
+        #bt.logging.info(f"Session with id {session_number} already exists. Skipping creation.")
         return existing_session.id  # Return the existing session id
 
     return create_record(session, LeaderboardSession,
@@ -68,7 +68,7 @@ def create_competition(name: str):
     # Check if the competition with the given name already exists
     existing_competition = session.query(Competition).filter_by(name=name).first()
     if existing_competition:
-        bt.logging.info(f"Competition with name {name} already exists. Skipping creation.")
+        #bt.logging.info(f"Competition with name {name} already exists. Skipping creation.")
         return existing_competition.id  # Return the existing competition id
 
     return create_record(session, Competition, name=name)
@@ -80,7 +80,7 @@ def create_judgement(validator_id: int, miner_id: int):
     # Check if the judgement with the given validator and miner id already exists
     existing_judgement = session.query(Judgement).filter_by(validator_id=validator_id, miner_id=miner_id).first()
     if existing_judgement:
-        bt.logging.info(f"judgement with given {validator_id} and {miner_id} already exists. Skipping creation.")
+        #bt.logging.info(f"judgement with given {validator_id} and {miner_id} already exists. Skipping creation.")
         return existing_judgement.id  # Return the existing competition id
 
     return create_record(session, Judgement, validator_id=validator_id, miner_id=miner_id)
@@ -89,7 +89,7 @@ def create_evaluation_type(name: str):
     # Check if the competition with the given name already exists
     existing_evaluation_type = session.query(EvaluationType).filter_by(name=name).first()
     if existing_evaluation_type:
-        bt.logging.info(f"Evaluation type with name {name} already exists. Skipping creation.")
+        #bt.logging.info(f"Evaluation type with name {name} already exists. Skipping creation.")
         return existing_evaluation_type.id  # Return the existing evaluation type id
 
     return create_record(session, EvaluationType, name=name)
@@ -110,12 +110,10 @@ def store_results_to_database(results: dict):
     solutions = results["solutions"]
     scores = results["scores"]
     challenge = results["challenge"]
-
     session_number = challenge["session_number"]
     session_start_datetime = results["session_start_datetime"]
     ground_truth_html = challenge["task"]
     competition_type = challenge["competition_type"]
-
     competition_id = create_competition(competition_type)
     session_id = create_leaderboard_session(session_number, session_start_datetime, competition_id)
     challenge_id = create_challenge(session_id, ground_truth_html)
@@ -245,11 +243,15 @@ def make_signed_request(
     ).hex()
     headers["Signature"] = signature
 
-    response = requests.request(method, url, headers=headers, files=files, json=payload, timeout=5)
+    response = requests.request(method, url, headers=headers, files=files, json=payload, timeout=120)
     return response
 
 def send_challenge_to_stats_collector(wallet: "bt.Wallet", session_number: int) -> None:
     session_data = get_session_data(session_number)
+    if not session_data:
+        bt.logging.warning(f"No session data found for session {session_number}")
+        return
+    bt.logging.info(f"Sending challenge to stats collector for session {session_number}")
     response = make_signed_request(
         wallet=wallet,
         url="https://webgenie-collector.bactensor.io/api/competitions/",
@@ -258,4 +260,6 @@ def send_challenge_to_stats_collector(wallet: "bt.Wallet", session_number: int) 
         payload=session_data,
     )
     if not response.ok:
-        print(response.json())
+        bt.logging.error(response.json())
+    else:
+        bt.logging.success(response.json())

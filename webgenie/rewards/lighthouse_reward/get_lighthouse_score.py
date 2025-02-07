@@ -16,25 +16,35 @@ from webgenie.constants import (
 
 def get_lighthouse_score(htmls: List[str]) -> List[Dict[str, float]]:
     def get_lighthouse_score_from_subprocess(url):
-        bt.logging.info(f"Getting lighthouse score from {url}...")
         try:
-            result = subprocess.run(
-                ['lighthouse', url, '--output=json', '--quiet', '--chrome-flags="--headless --no-sandbox"'],
-                capture_output=True, text=True, timeout=180
-            )
-            if result.returncode == 0:
-                lighthouse_report = json.loads(result.stdout)
-                scores = {
-                    'performance': lighthouse_report['categories']['performance']['score'],
-                    'accessibility': lighthouse_report['categories']['accessibility']['score'],
-                    'best-practices': lighthouse_report['categories']['best-practices']['score'],
-                    'seo': lighthouse_report['categories']['seo']['score']
-                }
-                return scores
-            else:
-                bt.logging.error(f"Error running Lighthouse: {result.stderr}")
+            command = f"lighthouse {url} --output=json --chrome-flags='--headless --no-sandbox' --quiet"
+            output = os.popen(command).read()
+            loaded_json = json.loads(output)
+            scores = {
+                'performance': loaded_json['categories']['performance']['score'],
+                'accessibility': loaded_json['categories']['accessibility']['score'],
+                'best-practices': loaded_json['categories']['best-practices']['score'],
+                'seo': loaded_json['categories']['seo']['score']
+            }
+            return scores
+            # result = subprocess.run(
+            #     ['lighthouse', url, '--output=json', '--quiet', '--chrome-flags="--headless --no-sandbox"'],
+            #     capture_output=True, text=True, timeout=180
+            # )
+            # if result.returncode == 0:
+            #     lighthouse_report = json.loads(result.stdout)
+            #     scores = {
+            #         'performance': lighthouse_report['categories']['performance']['score'],
+            #         'accessibility': lighthouse_report['categories']['accessibility']['score'],
+            #         'best-practices': lighthouse_report['categories']['best-practices']['score'],
+            #         'seo': lighthouse_report['categories']['seo']['score']
+            #     }
+            #     return scores
+            # else:
+            #     bt.logging.error(f"Stderr from lighthouse: {result.stderr}, returncode: {result.returncode}")
+            #     raise Exception(f"Stderr from lighthouse: {result.stderr}, returncode: {result.returncode}")
         except Exception as e:
-            bt.logging.error(f"Error running Lighthouse: {e}")
+            bt.logging.error(f"Error running Lighthouse: {e}, output: {output}")
             return {
                 'performance': 0,
                 'accessibility': 0,
@@ -42,7 +52,6 @@ def get_lighthouse_score(htmls: List[str]) -> List[Dict[str, float]]:
                 'seo': 0
             }
 
-    bt.logging.info(f"Getting lighthouse scores from localhost:{LIGHTHOUSE_SERVER_PORT}...")
     scores = []
     
     for i in range(len(htmls)):

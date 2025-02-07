@@ -1,110 +1,89 @@
 import bittensor as bt
 import os
 
-# backend api hotkey
-API_HOTKEY = "5DXDCYTuPfLqQXbxfvvnarG31SdTDtaubqpQrzjrcMgoP9dp"
+# Change this value when updating your code base.
+# Define the version of the webgenie.
+__VERSION__ = "1.1.1" # version
 
-# image task timeout
-IMAGE_TASK_TIMEOUT = 72
+SPEC_VERSION = (
+    (1000 * int(__VERSION__.split(".")[0]))
+    + (10 * int(__VERSION__.split(".")[1]))
+    + (1 * int(__VERSION__.split(".")[2]))
+)
 
-# text task timeout
-TEXT_TASK_TIMEOUT = 72
+__STATE_VERSION__ = "1.0.0" # state version
 
-# reveal time
-TASK_REVEAL_TIME = 20
+API_HOTKEY = "5HW7jKgKHfxwkpziTTiVbGwLGQrymZsEFiSpBPhqKQjnAW9S" # backend api hotkey
 
-# reveal time out
-TASK_REVEAL_TIMEOUT = 20
+IMAGE_TASK_TIMEOUT = 72 # image task timeout
 
-# lighthouse server port
-LIGHTHOUSE_SERVER_PORT = int(os.getenv("LIGHTHOUSE_SERVER_PORT",5000))
+TEXT_TASK_TIMEOUT = 72 # text task timeout
 
-# max competition history size
-MAX_COMPETETION_HISTORY_SIZE = 10
+TASK_REVEAL_TIME = 20 # reveal time
 
-# max synthetic task size
-MAX_SYNTHETIC_TASK_SIZE = 10
+TASK_REVEAL_TIMEOUT = 20 # reveal time out
 
-# max debug image string length
-MAX_DEBUG_IMAGE_STRING_LENGTH = 20
+LIGHTHOUSE_SERVER_PORT = int(os.getenv("LIGHTHOUSE_SERVER_PORT",5000)) # lighthouse server port
 
-# place holder image url
-PLACE_HOLDER_IMAGE_URL = "https://picsum.photos/seed/picsum/800/600"
+MAX_COMPETETION_HISTORY_SIZE = 10 # max competition history size
 
-# default load time
-DEFAULT_LOAD_TIME = 1000
+MAX_SYNTHETIC_TASK_SIZE = 10 # max synthetic task size
 
-# max page load time
-GROUND_TRUTH_HTML_LOAD_TIME = 20000
+MAX_DEBUG_IMAGE_STRING_LENGTH = 20 # max debug image string length
 
-# miner html load time
-CHROME_HTML_LOAD_TIME = 60000
+PLACE_HOLDER_IMAGE_URL = "https://picsum.photos/seed/picsum/800/600" # place holder image url
 
-# javascript running time
-JAVASCRIPT_RUNNING_TIME = 1000
+DEFAULT_LOAD_TIME = 1000 # default load time
 
+GROUND_TRUTH_HTML_LOAD_TIME = 20000 # max page load time
 
-# miner html load time
-MINER_HTML_LOAD_TIME = 2000
+CHROME_HTML_LOAD_TIME = 60000 # miner html load time
 
-# max miner html length
-MAX_MINER_HTML_LEN = 1000000
+JAVASCRIPT_RUNNING_TIME = 1000 # javascript running time
 
-# work dir
-WORK_DIR = "work"
+MINER_HTML_LOAD_TIME = 2000 # miner html load time
 
-# lighthouse server work dir
-LIGHTHOUSE_SERVER_WORK_DIR = f"{WORK_DIR}/lighthouse_server_work"
+MAX_MINER_HTML_LEN = 1000000 # max miner html length
 
-# html extension
-HTML_EXTENSION = ".html"
+WORK_DIR = "work" # work dir
 
-# image extension
-IMAGE_EXTENSION = ".png"
+LIGHTHOUSE_SERVER_WORK_DIR = f"{WORK_DIR}/lighthouse_server_work" # lighthouse server work dir
 
-# max count of validators
-MAX_COUNT_VALIDATORS = 1
+HTML_EXTENSION = ".html" # html extension
 
-# block in seconds
-BLOCK_IN_SECONDS = 12
+IMAGE_EXTENSION = ".png" # image extension
 
-# tempo blocks
-TEMPO_BLOCKS = 360
+MAX_COUNT_VALIDATORS = 1 # max count of validators
 
-# session window blocks
-SESSION_WINDOW_BLOCKS = TEMPO_BLOCKS * 3
+BLOCK_IN_SECONDS = 12 # block in seconds
 
-# considering session number
-CONSIDERING_SESSION_NUMBER = 8
+TEMPO_BLOCKS = 360 # tempo blocks
 
-# querying window blocks
+SESSION_WINDOW_BLOCKS = TEMPO_BLOCKS * 5 # session window blocks
+
+CONSIDERING_SESSION_COUNTS = 8
+
 QUERING_WINDOW_BLOCKS = 10
 
-# weight setting window blocks
 WEIGHT_SETTING_WINDOW_BLOCKS = 50 # 50 blocks = 10 minutes
 
-# llm model id
-LLM_MODEL_ID = os.getenv("LLM_MODEL_ID")
+LLM_MODEL_ID = os.getenv("LLM_MODEL_ID") # llm model id
 
-# llm api key
-LLM_API_KEY = os.getenv("LLM_API_KEY")
+LLM_API_KEY = os.getenv("LLM_API_KEY") # llm api key
 
-# llm model url
-LLM_MODEL_URL = os.getenv("LLM_MODEL_URL")
+LLM_MODEL_URL = os.getenv("LLM_MODEL_URL") # llm model url
 
-# wandb api key
-WANDB_API_KEY = os.getenv("WANDB_API_KEY")
+WANDB_OFF = os.getenv("WANDB_OFF", "False").lower() == "true" # wandb off
 
-# wandb project name
-WANDB_PROJECT_NAME = os.getenv("WANDB_PROJECT_NAME")
+WANDB_API_KEY = os.getenv("WANDB_API_KEY") # wandb api key
 
-# wandb entity name
-WANDB_ENTITY_NAME = os.getenv("WANDB_ENTITY_NAME")
+WANDB_PROJECT_NAME = f"webgenie" # wandb project name
 
-# vpermit tao limit
-#VPERMIT_TAO_LIMIT = bt.Balance(float(os.getenv("VPERMIT_TAO_LIMIT", 4096)))
-VPERMIT_TAO_LIMIT = float(os.getenv("VPERMIT_TAO_LIMIT", 4096))
+WANDB_ENTITY_NAME = os.getenv("WANDB_ENTITY_NAME") # wandb entity name
 
-# axon off
-AXON_OFF = os.getenv("AXON_OFF", "False").lower() == "true"
+VPERMIT_TAO_LIMIT = 1000 # vpermit tao limit
+
+AXON_OFF = os.getenv("AXON_OFF", "False").lower() == "true" # axon off
+
+NEURON_EPOCH_LENGTH = int(os.getenv("NEURON_EPOCH_LENGTH", 25)) # neuron epoch length
 

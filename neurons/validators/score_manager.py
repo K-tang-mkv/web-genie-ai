@@ -2,73 +2,84 @@ import bittensor as bt
 import copy
 import numpy as np
 
+from rich.console import Console
+from rich.table import Table
 from typing import List
 
-
-from webgenie.base.utils.weight_utils import (
-    process_weights_for_netuid,
-    convert_weights_and_uids_for_emit,
-) 
 from webgenie.base.neuron import BaseNeuron
-from webgenie.constants import CONSIDERING_SESSION_NUMBER
-from webgenie.storage import send_challenge_to_stats_collector
+from webgenie.challenges.challenge import Challenge, RESERVED_WEIGHTS
+from webgenie.constants import CONSIDERING_SESSION_COUNTS, __STATE_VERSION__
 
 
 class ScoreManager:
     def __init__(self, neuron: BaseNeuron):
         self.neuron = neuron
+        self.state_path = self.neuron.config.neuron.full_path + "/state.npz"
         self.lock = neuron.lock
-        
-        self.should_save = False
-        
+
         self.hotkeys = copy.deepcopy(self.neuron.metagraph.hotkeys)
-        self.scoring_session_number = -1
-        self.session_accumulated_scores = np.zeros(self.neuron.metagraph.n, dtype=np.float32)
-        self.last_send_stats_collector_session_number = -1
-        self.winners = []
+        self.current_session = -1
+        self.number_of_tasks = 0
+        self.total_scores = np.zeros(self.neuron.metagraph.n, dtype=np.float32)
+        self.last_set_weights_session = -1
+        self.winners = {}
 
     def load_scores(self):
         try:
-            bt.logging.info("Loading scores")
-            state = np.load(self.neuron.config.neuron.full_path + "/state.npz")
+            bt.logging.info(f"Loading scores from {self.state_path}")
+            data = np.load(self.state_path, allow_pickle=True)
 
-            self.hotkeys = state.get(
-                "hotkeys",
+            self.hotkeys = data.get(
+                f"hotkeys", 
                 copy.deepcopy(self.neuron.metagraph.hotkeys)
             )
-            self.scoring_session_number = state.get(
-                "scoring_session_number", 
+            
+            self.current_session = data.get(
+                f"current_session", 
                 -1
             )
-            self.session_accumulated_scores = state.get(
-                "tempo_accumulated_scores",
-                np.zeros(self.neuron.metagraph.n, dtype=np.float32)
+
+            self.number_of_tasks = data.get(
+                f"number_of_tasks", 
+                0
             )
-            self.last_send_stats_collector_session_number = state.get(
-                "last_send_stats_collector_session_number",
+            
+            self.last_set_weights_session = data.get(
+                f"last_set_weights_session", 
                 -1
             )
-            self.winners = state.get(
-                "winners",
-                []
+
+            self.total_scores = data.get(
+                f"total_scores_{__STATE_VERSION__}", 
+                np.zeros(self.neuron.metagraph.n, dtype=np.float32),
             )
+            
+            self.winners = dict(data.get(f"winners_{__STATE_VERSION__}", np.array({})).item())
         except Exception as e:
-            bt.logging.warning(f"Error loading scores: {e}")
+            bt.logging.error(f"Error loading state: {e}")
+            self.hotkeys = copy.deepcopy(self.neuron.metagraph.hotkeys)
+            self.current_session = -1
+            self.total_scores = np.zeros(self.neuron.metagraph.n, dtype=np.float32)
+            self.last_set_weights_session = -1
+            self.number_of_tasks = 0
+            self.winners = {}
 
     def save_scores(self):
-        if not self.should_save:
-            return
-        
-        self.should_save = False
-        bt.logging.info("Saving scores")
-        np.savez(
-            self.neuron.config.neuron.full_path + "/state.npz",
-            hotkeys=self.hotkeys,
-            scoring_session_number=self.scoring_session_number,
-            tempo_accumulated_scores=self.session_accumulated_scores,
-            last_send_stats_collector_session_number=self.last_send_stats_collector_session_number,
-            winners=self.winners,
-        )
+        try:
+            bt.logging.info(f"Saving scores to {self.state_path}")
+            np.savez(
+                self.state_path,
+                hotkeys=self.hotkeys,
+                **{f"current_session": self.current_session},
+                last_set_weights_session=self.last_set_weights_session,
+                number_of_tasks=self.number_of_tasks,
+                **{f"total_scores_{__STATE_VERSION__}": self.total_scores},
+                **{f"winners_{__STATE_VERSION__}": self.winners},
+                allow_pickle=True,
+            )
+            self.should_save = False
+        except Exception as e:
+            bt.logging.error(f"Error saving state: {e}")
     
     def set_new_hotkeys(self, new_hotkeys: List[str]):
         bt.logging.info(
@@ -77,106 +88,117 @@ class ScoreManager:
         # Zero out all hotkeys that have been replaced.
         for uid, hotkey in enumerate(self.hotkeys):
             if hotkey != new_hotkeys[uid]:
-                self.session_accumulated_scores[uid] = 0
+                self.total_scores[uid] = 0
 
         # Check to see if the metagraph has changed size.
         # If so, we need to add new hotkeys and moving averages.
         if len(self.hotkeys) < len(new_hotkeys):
-            new_session_accumulated_scores = np.zeros((len(new_hotkeys)))
-            min_len = min(len(self.hotkeys), len(self.session_accumulated_scores))
-            new_session_accumulated_scores[:min_len] = self.session_accumulated_scores[:min_len]
-            self.session_accumulated_scores = new_session_accumulated_scores
+            new_total_scores = np.zeros((len(new_hotkeys)))
+            min_len = min(len(self.hotkeys), len(self.total_scores))
+            new_total_scores[:min_len] = self.total_scores[:min_len]
+            self.total_scores = new_total_scores
 
         # Update the hotkeys.
         self.hotkeys = copy.deepcopy(new_hotkeys)
-        self.should_save = True
+        with self.lock:
+            self.save_scores()
 
-    def update_scores(self, rewards: np.ndarray, uids: List[int], session_number: int):
-        if self.scoring_session_number != session_number:
+    def update_scores(self, rewards: np.ndarray, uids: List[int], challenge: Challenge):
+        bt.logging.info("Updating scores")
+        session = challenge.session
+        competition_type = challenge.competition_type
+        if self.current_session != session:
             # This is a new session, reset the scores and winners.
-            self.scoring_session_number = session_number
-            self.session_accumulated_scores = np.zeros(self.neuron.metagraph.n, dtype=np.float32)
-            if len(self.winners) > CONSIDERING_SESSION_NUMBER:
-                self.winners.pop(0)
-            self.winners.append(-1)
-
-        if not self.winners:
-            self.winners.append(-1)
-
+            self.current_session = session
+            self.number_of_tasks = 0
+            self.total_scores = np.zeros(self.neuron.metagraph.n, dtype=np.float32)
         # Update accumulated scores and track best performer
-        self.session_accumulated_scores[uids] += rewards
-        bt.logging.info(f"Updated scores: {self.session_accumulated_scores}")
-        self.winners[-1] = np.argmax(self.session_accumulated_scores)
-        bt.logging.info(f"Updated winners: {self.winners}")
-        self.should_save = True
-    
-    def set_weights(self):
-        """
-        Sets the validator weights to the metagraph hotkeys based on the scores it has received from the miners. The weights determine the trust and incentive level the validator assigns to miner nodes on the network.
-        """
+        self.number_of_tasks += 1
+        self.total_scores[uids] += rewards
+        # Create a rich table to display total scores
+  
+        total_scores_table = Table(
+            title=f"Total Scores - Session:#{session}, Number of Tasks:#{self.number_of_tasks}",
+            show_header=True,
+            header_style="bold magenta", 
+            title_style="bold blue",
+            border_style="blue"
+        )
+        total_scores_table.add_column("UID", justify="right", style="cyan", header_style="bold cyan")
+        total_scores_table.add_column("Total Score", justify="right", style="green")
+        total_scores_table.add_column("Average Score", justify="right", style="yellow")
         
-        with self.lock:
-            if not self.neuron.should_set_weights():
-                return
-            current_session_number = self.neuron.session_number
-
-        if current_session_number != self.last_send_stats_collector_session_number:
-            try:
-                send_challenge_to_stats_collector(self.neuron.wallet, current_session_number)
-                self.last_send_stats_collector_session_number = current_session_number
-            except Exception as e:
-                bt.logging.error(f"Error sending challenge to stats collector: {e}")
+        # Add rows for non-zero scores, sorted by score
+        scored_uids = [(uid, score) for uid, score in enumerate(self.total_scores) if score > 0]
+        scored_uids.sort(key=lambda x: x[1], reverse=True)
         
-        with self.lock:
-            scores = np.zeros(self.neuron.metagraph.n, dtype=np.float32)
-            for winner in self.winners:
-                scores[winner] += 1
-
-
-        # Calculate the average reward for each uid across non-zero values.
-        # Replace any NaN values with 0.
-        # Compute the norm of the scores
-        norm = np.linalg.norm(scores, ord=1, axis=0, keepdims=True)
-
-        # Check if the norm is zero or contains NaN values
-        if np.any(norm == 0) or np.isnan(norm).any():
-            norm = np.ones_like(norm)  # Avoid division by zero or NaN
-
-        # Compute raw_weights safely
-        raw_weights = scores / norm
-        
-        with self.lock:
-            # Process the raw weights to final_weights via subtensor limitations.
-            (
-                processed_weight_uids,
-                processed_weights,
-            ) = process_weights_for_netuid(
-                uids=self.neuron.metagraph.uids,
-                weights=raw_weights,
-                netuid=self.neuron.config.netuid,
-                subtensor=self.neuron.subtensor,
-                metagraph=self.neuron.metagraph,
+        for uid, score in scored_uids:
+            total_scores_table.add_row(
+                str(uid),
+                f"{score:.4f}",
+                f"{score / self.number_of_tasks:.4f}",
             )
 
-            # Convert to uint16 weights and uids.
-            (
-                uint_uids,
-                uint_weights,
-            ) = convert_weights_and_uids_for_emit(
-                uids=processed_weight_uids, weights=processed_weights
+        console = Console()
+        console.print(total_scores_table)
+
+        mask = np.ones_like(self.total_scores, dtype=bool)
+        if session-1 in self.winners and self.winners[session-1][0] != -1:
+            mask[self.winners[session-1][0]] = False
+        masked_scores = np.where(mask, self.total_scores, -np.inf)
+        current_winner = np.argmax(masked_scores)
+        
+        if self.total_scores[current_winner] > 0:
+            self.winners[session] = (current_winner, competition_type)
+        else:
+            self.winners[session] = (-1, competition_type)
+
+        # Remove old winners
+        for session_number in list(self.winners.keys()):
+            if session_number < session - CONSIDERING_SESSION_COUNTS * 2:
+                self.winners.pop(session_number)
+ 
+        # Create a rich table to display the winners
+        table = Table(
+            title="Winners by Session",
+            show_header=True,
+            header_style="bold magenta",
+            title_style="bold blue",
+            border_style="blue"
+        )
+        table.add_column("Session", justify="right", style="cyan", header_style="bold cyan")
+        table.add_column("Winner UID", justify="right", style="green")
+        table.add_column("Competition Type", justify="left")
+        # Add rows sorted by session number
+        for session_number in sorted(self.winners.keys()):
+            winner_uid, competition_type = self.winners[session_number]
+            table.add_row(
+                str(session_number),
+                str(winner_uid),
+                str(competition_type),
             )
-            # Set the weights on chain via our subtensor connection.
-            result, msg = self.neuron.subtensor.set_weights(
-                wallet=self.neuron.wallet,
-                netuid=self.neuron.config.netuid,
-                uids=uint_uids,
-                weights=uint_weights,
-                wait_for_finalization=False,
-                wait_for_inclusion=False,
-                version_key=self.neuron.spec_version,
-            )
-            if result is True:
-                bt.logging.success("set_weights on chain successfully!")
-            else:
-                bt.logging.error("set_weights failed", msg)
+
+        console = Console()
+        console.print(table)
+        with self.lock:
+            self.save_scores()
+        
+    def get_scores(self, session_upto: int):
+        return np.power(self.total_scores, 3)
+        # scores = np.zeros(self.neuron.metagraph.n, dtype=np.float32)
+        # tiny_weight = 1 / 128
+        # big_weight = 1.0
+        # with self.lock:
+        #     for session_number in self.winners:
+        #         if (session_number <= session_upto - CONSIDERING_SESSION_COUNTS or 
+        #             session_number > session_upto):
+        #             continue
                 
+        #         winner, _ = self.winners[session_number]
+        #         if winner == -1:
+        #             continue
+        #         if session_number == session_upto:
+        #             scores[winner] += big_weight
+        #         else:
+        #             scores[winner] += tiny_weight
+        # return scores

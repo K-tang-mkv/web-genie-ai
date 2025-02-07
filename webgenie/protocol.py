@@ -5,7 +5,6 @@ import bittensor as bt
 import hashlib
 import pydantic
 import random
-import uuid
 
 
 class WebgenieTextSynapse(bt.Synapse):
@@ -35,6 +34,12 @@ class WebgenieImageSynapse(bt.Synapse):
     """
     A protocol for the webgenie image task.
     """
+    VERSION: str = pydantic.Field(
+        "NONE",
+        title="Version",
+        description="The version of the protocol.",
+    )
+
     task_id: str = pydantic.Field(
         "",
         title="Task ID",
@@ -72,8 +77,8 @@ class WebgenieImageSynapse(bt.Synapse):
     )
 
 
-def add_answer_hash(self, html: str) -> int:
-    nonce = random.randint(0, 1000000)
+def add_answer_hash(self, uid: int, html: str) -> int:
+    nonce = uid
     hash_input = html + str(nonce)
     self.html_hash = hashlib.sha256(hash_input.encode()).hexdigest()
     self.nonce = nonce
@@ -87,4 +92,3 @@ def verify_answer_hash(self) -> bool:
 
 def hide_secret_info(self):
     self.html = ""
-    self.nonce = 0
